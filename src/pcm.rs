@@ -965,7 +965,8 @@ fn playback_to_default() {
     use std::ffi::CString;
     let pcm = PCM::open(&*CString::new("default").unwrap(), Direction::Playback, false).unwrap();
     let hwp = HwParams::any(&pcm).unwrap();
-    hwp.set_channels(1).unwrap();
+    let nchans = 2;
+    hwp.set_channels(nchans as u32).unwrap();
     hwp.set_rate(44100, ValueOr::Nearest).unwrap();
     hwp.set_format(Format::s16()).unwrap();
     hwp.set_access(Access::RWInterleaved).unwrap();
@@ -975,6 +976,10 @@ fn playback_to_default() {
     let swp = pcm.sw_params_current().unwrap();
     swp.set_start_threshold(hwp.get_buffer_size().unwrap()).unwrap();
     pcm.sw_params(&swp).unwrap();
+
+    // (note to self: no effect)
+    //pcm.prepare().unwrap();
+    //pcm.start().unwrap();
 
     println!("PCM status: {:?}, {:?}", pcm.state(), pcm.hw_params_current().unwrap());
     let mut outp = Output::buffer_open().unwrap();
@@ -986,15 +991,23 @@ fn playback_to_default() {
         *a = ((i as f32 * 2.0 * ::std::f32::consts::PI / 128.0).sin() * 8192.0) as i16
     }
     let io = pcm.io_i16().unwrap();
-    for _ in 0..2*44100/1024 { // 2 seconds of playback
+    for _ in 0..2*44100/1024 * nchans { // 2 seconds of playback
         println!("PCM state: {:?}", pcm.state());
-        assert_eq!(io.writei(&buf[..]).unwrap(), 1024);
+        assert_eq!(io.writei(&buf[..]).unwrap(), 1024 / nchans);
     }
     if pcm.state() != State::Running { pcm.start().unwrap() };
 
     let mut outp2 = Output::buffer_open().unwrap();
     pcm.status().unwrap().dump(&mut outp2).unwrap();
     println!("== PCM status dump ==\n{}", outp2);
+    let status = pcm.status().unwrap();
+    println!("avail {}", pcm.avail().unwrap());
+
+    println!("status stat {:?}", status.get_state());
+    println!("status avail {}", status.get_avail());
+    println!("status delay {}", status.get_delay());
+    println!("status avail_max {}", status.get_avail_max());
+    println!("status overrange {}", status.get_overrange());
 
     pcm.drain().unwrap();
 }
